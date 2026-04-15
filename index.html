@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grok AI Agent • Test Lab Capacity Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;500;600&display=swap');
+        body { font-family: 'Segoe UI', system-ui, sans-serif; }
+        .ado-header { background: linear-gradient(to right, #0078d4, #106ebe); }
+        .widget { box-shadow: 0 4px 15px rgba(0,0,0,0.12); }
+        .upload-zone { border: 4px dashed #0078d4; }
+        .modal { animation: modalPop 0.3s ease-out; }
+        @keyframes modalPop { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+        .clickable:hover { background-color: #f8fafc; }
+    </style>
+</head>
+<body class="bg-gray-50">
+
+    <div class="ado-header text-white px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-x-4">
+            <span class="font-semibold text-2xl">🧠 Grok AI Agent</span>
+            <span class="bg-white/20 px-4 py-1 rounded-full text-xs font-medium">800 TC Region-Aware Model</span>
+        </div>
+        <div class="text-center font-medium">Test Lab – Sprint Capacity Dashboard</div>
+        <button onclick="resetToUpload()" class="px-5 py-2 bg-white text-blue-700 rounded-xl text-sm font-medium hover:bg-gray-100">New Upload</button>
+    </div>
+
+    <!-- Upload Screen -->
+    <div id="uploadScreen" class="max-w-2xl mx-auto pt-20 px-6">
+        <div class="text-center">
+            <div class="text-6xl mb-6">📤</div>
+            <h1 class="text-4xl font-semibold mb-4">Upload Your Sprint Features CSV</h1>
+            <p class="text-gray-600 text-lg mb-10">Grok AI Agent will build the complete dashboard</p>
+            <div onclick="document.getElementById('fileInput').click()" 
+                 class="upload-zone bg-white rounded-3xl p-20 cursor-pointer hover:border-blue-600 transition-colors">
+                <input type="file" id="fileInput" accept=".csv" class="hidden" onchange="handleFileUpload(event)">
+                <p class="font-semibold text-2xl mb-2">Drop CSV file here</p>
+                <p class="text-gray-500">or click to browse</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard -->
+    <div id="dashboardScreen" class="hidden max-w-screen-2xl mx-auto p-8">
+
+        <div class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-semibold">Test Lab – Sprint Capacity Dashboard</h1>
+            <div class="flex gap-4">
+                <button onclick="copyShareableLink()" 
+                        class="px-6 py-3 bg-blue-600 text-white rounded-2xl font-medium flex items-center gap-x-2 hover:bg-blue-700">
+                    🔗 Get Shareable Link
+                </button>
+                <button onclick="resetToUpload()" class="px-6 py-3 border border-gray-300 rounded-2xl font-medium hover:bg-gray-50">
+                    ← Upload New File
+                </button>
+            </div>
+        </div>
+
+        <!-- Rules + Ledger -->
+        <div class="grid grid-cols-12 gap-6 mb-8">
+            <div class="col-span-12 lg:col-span-4 widget bg-white rounded-3xl p-8">
+                <h2 class="text-xl font-semibold mb-5 flex items-center gap-x-2"><span class="text-blue-600">📋</span> Sprint Capacity Rules</h2>
+                <div id="rulesMarkdown" class="prose text-sm"></div>
+            </div>
+            <div class="col-span-12 lg:col-span-8 widget bg-white rounded-3xl p-8">
+                <h2 class="text-xl font-semibold mb-5 flex items-center gap-x-2">
+                    <span class="text-blue-600">📊</span> Capacity Ledger – Current Sprint
+                    <span class="ml-auto text-sm text-gray-500" id="rowCount"></span>
+                </h2>
+                <div class="overflow-auto border rounded-xl" id="ledgerContainer" style="max-height: 520px;"></div>
+            </div>
+        </div>
+
+        <!-- Clickable Charts -->
+        <div class="grid grid-cols-12 gap-6 mb-8">
+            <div onclick="showRegionDetail()" class="col-span-12 lg:col-span-6 widget bg-white rounded-3xl p-8 clickable">
+                <h2 class="text-xl font-semibold mb-5">Number of Test Cases Executed in Current Sprint by Region</h2>
+                <canvas id="regionChart" class="h-80"></canvas>
+            </div>
+            <div onclick="showComplexityDetail()" class="col-span-12 lg:col-span-6 widget bg-white rounded-3xl p-8 clickable">
+                <h2 class="text-xl font-semibold mb-5">Consumed by Complexity</h2>
+                <canvas id="complexityChart" class="h-80"></canvas>
+            </div>
+        </div>
+
+        <!-- Cards -->
+        <div class="grid grid-cols-12 gap-6">
+            <div onclick="showIntakeModal()" class="col-span-12 lg:col-span-6 widget bg-white rounded-3xl p-8 clickable">
+                <h2 class="text-xl font-semibold mb-5 flex items-center gap-x-2 text-amber-600"><span>⚠️</span> Intake – Needs Clarification (<span id="intakeCount">0</span>)</h2>
+                <div id="intakePreview" class="text-sm"></div>
+            </div>
+            <div onclick="showBreakInModal()" class="col-span-12 lg:col-span-6 widget bg-white rounded-3xl p-8 clickable">
+                <h2 class="text-xl font-semibold mb-5 flex items-center gap-x-2 text-red-600"><span>🚫</span> Break-in Items (<span id="breakInCount">0</span>)</h2>
+                <div id="breakInPreview" class="text-sm"></div>
+            </div>
+        </div>
+
+        <!-- Remaining -->
+        <div class="mt-10 grid grid-cols-3 gap-6" id="remainingCards"></div>
+
+        <!-- AI Summary -->
+        <div class="mt-12 bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200 rounded-3xl p-10">
+            <h3 class="font-semibold text-blue-700 flex items-center gap-x-3 mb-5"><span class="text-2xl">🧠</span> Grok AI Agent Summary</h3>
+            <div id="aiSummary" class="text-gray-700"></div>
+        </div>
+    </div>
+
+    <!-- Detail Modal, Intake & Break-in Modals (unchanged from your code) -->
+    <div id="detailModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50" onclick="if(event.target===this) hideDetailModal()">
+        <div class="modal bg-white rounded-3xl w-11/12 max-w-6xl max-h-[90vh] overflow-hidden">
+            <div class="p-6 border-b flex justify-between items-center">
+                <h2 id="modalTitle" class="text-2xl font-semibold"></h2>
+                <button onclick="hideDetailModal()" class="text-3xl">×</button>
+            </div>
+            <div class="p-6 overflow-auto max-h-[75vh]" id="modalContent"></div>
+        </div>
+    </div>
+
+    <div id="intakeModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50" onclick="if(event.target===this) hideModal('intakeModal')">
+        <div class="modal bg-white rounded-3xl w-11/12 max-w-6xl max-h-[90vh] overflow-hidden">
+            <div class="p-6 border-b flex justify-between"><h2 class="text-2xl font-semibold">Intake – Needs Clarification</h2><button onclick="hideModal('intakeModal')" class="text-3xl">×</button></div>
+            <div class="p-6 overflow-auto max-h-[75vh]" id="intakeModalContent"></div>
+        </div>
+    </div>
+
+    <div id="breakInModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50" onclick="if(event.target===this) hideModal('breakInModal')">
+        <div class="modal bg-white rounded-3xl w-11/12 max-w-6xl max-h-[90vh] overflow-hidden">
+            <div class="p-6 border-b flex justify-between"><h2 class="text-2xl font-semibold">Break-in Items</h2><button onclick="hideModal('breakInModal')" class="text-3xl">×</button></div>
+            <div class="p-6 overflow-auto max-h-[75vh]" id="breakInModalContent"></div>
+        </div>
+    </div>
+
+    <script>
+        let allData = [];
+
+        function handleFileUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            document.getElementById('uploadScreen').classList.add('hidden');
+            document.getElementById('dashboardScreen').classList.remove('hidden');
+
+            const reader = new FileReader();
+            reader.onload = function(ev) {
+                allData = parseCSV(ev.target.result);
+                renderFullDashboard();
+            };
+            reader.readAsText(file);
+        }
+
+        function parseCSV(text) {
+            const lines = text.trim().split('\n');
+            const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+            const result = [];
+            for (let i = 1; i < lines.length; i++) {
+                if (!lines[i].trim()) continue;
+                const values = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+                const obj = {};
+                headers.forEach((h, idx) => obj[h] = (values[idx] || '').replace(/"/g, '').trim());
+                result.push(obj);
+            }
+            return result;
+        }
+
+        function renderFullDashboard() {
+            // Rules, Ledger, Charts, Modals logic remains exactly the same as your provided code
+            document.getElementById('rulesMarkdown').innerHTML = `
+                <p><strong>Total sprint capacity: 800 TCs maximum</strong> (hard cap)</p>
+                <p><strong>No scope changes mid-sprint</strong> except approved break-ins</p>
+                <table class="w-full text-xs border-collapse mt-4">
+                    <thead><tr class="bg-gray-100"><th class="border p-2 text-left">Region</th><th class="border p-2 text-center">High</th><th class="border p-2 text-center">Medium</th><th class="border p-2 text-center">Low</th><th class="border p-2 text-center font-semibold">Total</th></tr></thead>
+                    <tbody>
+                        <tr><td class="border p-2">NA</td><td class="border p-2 text-center">120</td><td class="border p-2 text-center">180</td><td class="border p-2 text-center">60</td><td class="border p-2 text-center font-bold">360</td></tr>
+                        <tr><td class="border p-2">APAC</td><td class="border p-2 text-center">80</td><td class="border p-2 text-center">120</td><td class="border p-2 text-center">40</td><td class="border p-2 text-center font-bold">240</td></tr>
+                        <tr><td class="border p-2">EU</td><td class="border p-2 text-center">60</td><td class="border p-2 text-center">90</td><td class="border p-2 text-center">50</td><td class="border p-2 text-center font-bold">200</td></tr>
+                        <tr class="bg-gray-100 font-semibold"><td class="border p-2">Grand Total</td><td class="border p-2 text-center">260</td><td class="border p-2 text-center">390</td><td class="border p-2 text-center">150</td><td class="border p-2 text-center text-green-600">800</td></tr>
+                    </tbody>
+                </table>`;
+
+            let ledgerHTML = `<table class="w-full text-sm border-collapse"><thead class="sticky top-0 bg-gray-100"><tr><th class="border p-3 text-left">ID</th><th class="border p-3 text-left">Title</th><th class="border p-3 text-center">State</th><th class="border p-3 text-center">Complexity</th><th class="border p-3 text-center">Break In</th><th class="border p-3 text-center">TCs (Time Criticality)</th></tr></thead><tbody>`;
+            allData.forEach(r => {
+                const complexity = r.ComplexitySnMIT || r.Complexity || '-';
+                const breakInText = (r["Break In"] === "1" || r.BreakIn === "1" || (r.Title && /break[- ]?in/i.test(r.Title))) ? "YES" : "No";
+                const tcs = parseInt(r["Time Criticality"] || r.TimeCriticality || 0);
+                ledgerHTML += `<tr class="border-b hover:bg-slate-50">
+                    <td class="border p-3 font-mono">${r.ID || '-'}</td>
+                    <td class="border p-3">${r.Title || '-'}</td>
+                    <td class="border p-3 text-center">${r.State || '-'}</td>
+                    <td class="border p-3 text-center">${complexity}</td>
+                    <td class="border p-3 text-center ${breakInText==="YES"?"text-red-600 font-bold":""}">${breakInText}</td>
+                    <td class="border p-3 text-center font-semibold">${tcs}</td>
+                </tr>`;
+            });
+            ledgerHTML += `</tbody></table>`;
+            document.getElementById('ledgerContainer').innerHTML = ledgerHTML;
+            document.getElementById('rowCount').textContent = `(${allData.length} features)`;
+
+            const breakInItems = allData.filter(r => 
+                (r["Break In"] === "1" || r.BreakIn === "1") || 
+                (r.Title && /break[- ]?in/i.test(r.Title))
+            );
+            const intakeItems = allData.filter(r => !r.State || ["New","Validation","Analyze","Planning"].includes(r.State));
+
+            document.getElementById('intakeCount').textContent = intakeItems.length;
+            document.getElementById('breakInCount').textContent = breakInItems.length;
+            document.getElementById('intakePreview').innerHTML = `${intakeItems.length} features need clarification`;
+            document.getElementById('breakInPreview').innerHTML = `${breakInItems.length} break-in features detected`;
+
+            const regionData = { NA: { count: 0, tcs: 0 }, APAC: { count: 0, tcs: 0 }, EU: { count: 0, tcs: 0 } };
+            allData.forEach(r => {
+                let region = "NA";
+                const path = (r["Area Path"] || "").toUpperCase();
+                if (path.includes("APAC")) region = "APAC";
+                else if (path.includes("EU")) region = "EU";
+                const tcs = parseInt(r["Time Criticality"] || r.TimeCriticality || 0);
+                regionData[region].count++;
+                regionData[region].tcs += tcs;
+            });
+
+            new Chart(document.getElementById('regionChart'), {
+                type: 'bar',
+                data: {
+                    labels: ['NA', 'APAC', 'EU'],
+                    datasets: [
+                        { label: 'Test Cases Executed', data: [regionData.NA.tcs, regionData.APAC.tcs, regionData.EU.tcs], backgroundColor: '#0078d4' },
+                        { label: 'Capacity', data: [360, 240, 200], backgroundColor: '#e5e7eb' }
+                    ]
+                },
+                options: { indexAxis: 'y', plugins: { legend: { position: 'top' } } }
+            });
+
+            const complexityData = { High: 0, Medium: 0, Low: 0 };
+            allData.forEach(r => {
+                const c = (r.ComplexitySnMIT || "").toLowerCase();
+                if (c.includes("high")) complexityData.High++;
+                else if (c.includes("medium")) complexityData.Medium++;
+                else complexityData.Low++;
+            });
+
+            new Chart(document.getElementById('complexityChart'), {
+                type: 'bar',
+                data: {
+                    labels: ['High', 'Medium', 'Low'],
+                    datasets: [{ label: 'Features', data: [complexityData.High, complexityData.Medium, complexityData.Low], backgroundColor: ['#ef4444', '#f59e0b', '#22c55e'] }]
+                },
+                options: { plugins: { legend: { position: 'top' } } }
+            });
+
+            document.getElementById('aiSummary').innerHTML = `
+                Grok AI Agent analyzed <strong>${allData.length}</strong> features.<br><br>
+                • Break-in items: <strong>${breakInItems.length}</strong><br>
+                • Needs clarification: <strong>${intakeItems.length}</strong><br>
+                • Total test cases executed: <strong>${regionData.NA.tcs + regionData.APAC.tcs + regionData.EU.tcs}</strong><br><br>
+                Click on charts or cards for detailed feature lists.
+            `;
+        }
+
+        // Shareable Link Function
+        function copyShareableLink() {
+            const message = `To make this dashboard shareable with anyone:\n\n` +
+                `1. Save this HTML file as "index.html"\n` +
+                `2. Create a new GitHub repository\n` +
+                `3. Upload the index.html file\n` +
+                `4. Go to Settings → Pages → Deploy from main branch\n\n` +
+                `Your public link will be: https://YOUR-USERNAME.github.io/YOUR-REPO-NAME/\n\n` +
+                `Copy the instructions above and share with your team.`;
+
+            navigator.clipboard.writeText(message).then(() => {
+                alert("✅ Shareable link instructions copied to clipboard!\n\nPaste them in chat/email to share the dashboard.");
+            });
+        }
+
+        // Rest of your functions (showRegionDetail, showComplexityDetail, etc.) remain the same
+        function showRegionDetail() {
+            const regionFeatures = { NA: [], APAC: [], EU: [] };
+            allData.forEach(r => {
+                let region = "NA";
+                const path = (r["Area Path"] || "").toUpperCase();
+                if (path.includes("APAC")) region = "APAC";
+                else if (path.includes("EU")) region = "EU";
+                regionFeatures[region].push(r);
+            });
+            let html = `<h3 class="font-semibold mb-4">Features by Region</h3>`;
+            ['NA', 'APAC', 'EU'].forEach(reg => {
+                html += `<h4 class="font-medium mt-6 mb-2">${reg} (${regionFeatures[reg].length})</h4><ul class="list-disc pl-6 mb-6">`;
+                regionFeatures[reg].forEach(r => html += `<li>${r.Title}</li>`);
+                html += `</ul>`;
+            });
+            showDetailModal("Region Breakdown", html);
+        }
+
+        function showComplexityDetail() {
+            const highItems = allData.filter(r => (r.ComplexitySnMIT || "").toLowerCase().includes("high"));
+            const mediumItems = allData.filter(r => (r.ComplexitySnMIT || "").toLowerCase().includes("medium"));
+            const lowItems = allData.filter(r => !(r.ComplexitySnMIT || "").toLowerCase().includes("high") && !(r.ComplexitySnMIT || "").toLowerCase().includes("medium"));
+            let html = `<h3 class="font-semibold mb-4">Features by Complexity</h3>`;
+            html += `<h4 class="font-medium mt-6 mb-2 text-red-600">High (${highItems.length})</h4><ul class="list-disc pl-6 mb-6">`;
+            highItems.forEach(r => html += `<li>${r.Title}</li>`);
+            html += `</ul>`;
+            html += `<h4 class="font-medium mt-6 mb-2 text-amber-600">Medium (${mediumItems.length})</h4><ul class="list-disc pl-6 mb-6">`;
+            mediumItems.forEach(r => html += `<li>${r.Title}</li>`);
+            html += `</ul>`;
+            html += `<h4 class="font-medium mt-6 mb-2 text-green-600">Low (${lowItems.length})</h4><ul class="list-disc pl-6">`;
+            lowItems.forEach(r => html += `<li>${r.Title}</li>`);
+            html += `</ul>`;
+            showDetailModal("Complexity Breakdown", html);
+        }
+
+        function showIntakeModal() {
+            const items = allData.filter(r => !r.State || ["New","Validation","Analyze","Planning"].includes(r.State));
+            let html = `<table class="w-full text-sm"><thead><tr class="bg-amber-50"><th class="p-3 text-left">ID</th><th class="p-3 text-left">Title</th><th class="p-3 text-center">State</th><th class="p-3 text-center">Missing</th></tr></thead><tbody>`;
+            items.forEach(r => {
+                let missing = [];
+                if (!r.ComplexitySnMIT) missing.push("Complexity");
+                html += `<tr><td class="border p-3 font-mono">${r.ID}</td><td class="border p-3">${r.Title}</td><td class="border p-3 text-center">${r.State}</td><td class="border p-3 text-red-600">${missing.join(" + ") || "TC Volume"}</td></tr>`;
+            });
+            html += `</tbody></table>`;
+            document.getElementById('intakeModalContent').innerHTML = html;
+            document.getElementById('intakeModal').classList.remove('hidden');
+        }
+
+        function showBreakInModal() {
+            const items = allData.filter(r =>
+                (r["Break In"] === "1" || r.BreakIn === "1") ||
+                (r.Title && /break[- ]?in/i.test(r.Title))
+            );
+            let html = `<table class="w-full text-sm"><thead><tr class="bg-red-50"><th class="p-3 text-left">ID</th><th class="p-3 text-left">Title</th><th class="p-3 text-center">State</th><th class="p-3 text-center">Complexity</th></tr></thead><tbody>`;
+            items.forEach(r => {
+                html += `<tr><td class="border p-3 font-mono">${r.ID}</td><td class="border p-3">${r.Title}</td><td class="border p-3 text-center">${r.State}</td><td class="border p-3 text-center">${r.ComplexitySnMIT || '-'}</td></tr>`;
+            });
+            html += `</tbody></table>`;
+            document.getElementById('breakInModalContent').innerHTML = html;
+            document.getElementById('breakInModal').classList.remove('hidden');
+        }
+
+        function hideModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+
+        function showDetailModal(title, content) {
+            document.getElementById('modalTitle').innerHTML = title;
+            document.getElementById('modalContent').innerHTML = content;
+            document.getElementById('detailModal').classList.remove('hidden');
+        }
+
+        function hideDetailModal() {
+            document.getElementById('detailModal').classList.add('hidden');
+        }
+
+        function resetToUpload() {
+            document.getElementById('dashboardScreen').classList.add('hidden');
+            document.getElementById('uploadScreen').classList.remove('hidden');
+        }
+
+        window.onload = () => console.log("%c✅ Grok AI Dashboard Ready", "color:#0078d4;font-weight:600");
+    </script>
+</body>
+</html>
